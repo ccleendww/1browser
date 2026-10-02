@@ -7,42 +7,67 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        IPA_NAME: "1browser-unsigned.ipa"
     scripts:
       - name: Build iOS and package unsigned IPA
         script: |
-          set +e
+          set -e
 
+          echo "=== Flutter dependencies ==="
           flutter clean
           flutter pub get
 
-          flutter build ios --release --no-codesign
+          echo "=== CocoaPods ==="
+          cd ios
+          pod install
+          cd ..
 
-          BUILD_STATUS=$?
-
-          set -e
-
-          echo "Flutter exit code: $BUILD_STATUS"
-
-          if [ ! -d "build/ios/iphoneos/Runner.app" ]; then
-              echo "Runner.app was not generated."
-              exit $BUILD_STATUS
-          fi
-
-          echo "Runner.app was successfully generated."
+          echo "=== Build iOS WITHOUT code signing ==="
 
           rm -rf build/ios/unsigned
-          rm -rf build/ios/ipa
+          rm -rf build/ios/DerivedData
+
+          mkdir -p build/ios/iphoneos
+
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/DerivedData \
+            CONFIGURATION_BUILD_DIR="$PWD/build/ios/iphoneos" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            CODE_SIGN_STYLE=Manual \
+            build
+
+          echo "=== Check Runner.app ==="
+
+          if [ ! -d "build/ios/iphoneos/Runner.app" ]; then
+              echo "ERROR: Runner.app was not generated."
+              find build/ios -maxdepth 5 -type d -name "*.app" -print
+              exit 1
+          fi
+
+          echo "Runner.app generated successfully."
+
+          echo "=== Package unsigned IPA ==="
 
           mkdir -p build/ios/unsigned/Payload
           mkdir -p build/ios/ipa
 
-          cp -R build/ios/iphoneos/Runner.app \
-                build/ios/unsigned/Payload/Runner.app
+          cp -R \
+            build/ios/iphoneos/Runner.app \
+            build/ios/unsigned/Payload/Runner.app
 
           cd build/ios/unsigned
 
-          zip -r ../ipa/1browser-unsigned.ipa Payload
+          zip -qr ../ipa/1browser-unsigned.ipa Payload
+
+          echo "=== IPA generated ==="
+          ls -lh ../ipa/1browser-unsigned.ipa
     artifacts:
       - build/ios/ipa/*.ipa
