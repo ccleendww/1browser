@@ -10,24 +10,39 @@ workflows:
       vars:
         IPA_NAME: "1browser-unsigned.ipa"
     scripts:
-      - name: Install Flutter dependencies
+      - name: Build iOS and package unsigned IPA
         script: |
+          set +e
+
+          flutter clean
           flutter pub get
 
-      - name: Install CocoaPods
-        script: |
-          find . -name "Podfile" -execdir pod install \;
-
-      - name: Build iOS (release, no codesign)
-        script: |
           flutter build ios --release --no-codesign
 
-      - name: Package unsigned IPA
-        script: |
+          BUILD_STATUS=$?
+
+          set -e
+
+          echo "Flutter exit code: $BUILD_STATUS"
+
+          if [ ! -d "build/ios/iphoneos/Runner.app" ]; then
+              echo "Runner.app was not generated."
+              exit $BUILD_STATUS
+          fi
+
+          echo "Runner.app was successfully generated."
+
+          rm -rf build/ios/unsigned
+          rm -rf build/ios/ipa
+
           mkdir -p build/ios/unsigned/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ios/unsigned/Payload/
           mkdir -p build/ios/ipa
+
+          cp -R build/ios/iphoneos/Runner.app \
+                build/ios/unsigned/Payload/Runner.app
+
           cd build/ios/unsigned
+
           zip -r ../ipa/1browser-unsigned.ipa Payload
     artifacts:
-      - build/ios/ipa/1browser-unsigned.ipa
+      - build/ios/ipa/*.ipa
